@@ -1,4 +1,4 @@
-# PIS - Hệ thống quản lý kho thuốc (CNPM)
+# PIS - Hệ thống quản lý kho thuốc (TTCS)
 
 ## Kiến trúc
 
@@ -22,8 +22,8 @@
 ### 1. Clone project
 
 ```bash
-git clone <repository-url>
-cd PIS_CNPM
+git clone https://github.com/ngocuyenle15/PIS-TTCS.git
+cd PIS-TTCS
 ```
 
 ### 2. Khởi chạy toàn bộ hệ thống
