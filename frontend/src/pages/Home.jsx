@@ -115,8 +115,18 @@ const mockCustomers = [
 
 function Home() {
   const navigate = useNavigate();
-  const username = localStorage.getItem('username') || 'User';
-  const role = localStorage.getItem('role') || 'Role';
+  const [username, setUsername] = useState(() => localStorage.getItem('username') || 'User');
+  const [role, setRole] = useState(() => localStorage.getItem('role') || 'Role');
+  const [authChecked, setAuthChecked] = useState(false);
+
+  // Profile & Password change modal states
+  const [showProfileModal, setShowProfileModal] = useState(false);
+  const [employeeInfo, setEmployeeInfo] = useState(null);
+  const [oldPassword, setOldPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
+  const [changePasswordError, setChangePasswordError] = useState('');
+  const [changePasswordSuccess, setChangePasswordSuccess] = useState('');
 
   const getRoleClass = (r) => {
     if (r === 'Admin') return 'role-admin';
@@ -1012,6 +1022,8 @@ function Home() {
 
   // Tải dữ liệu phân trang tự động khi chuyển tab cấu hình
   useEffect(() => {
+    if (!authChecked) return;
+
     if (activeTab === 'catalog') {
       fetchCatalogs(1);
     } else if (activeTab === 'unit') {
@@ -1074,7 +1086,7 @@ function Home() {
     } else if (activeTab === 'overview') {
       fetchDashboardData();
     }
-  }, [activeTab]);
+  }, [activeTab, authChecked]);
 
   // Automatic debounce filters removed. Search triggers manually via Search button.
 
@@ -1082,6 +1094,69 @@ function Home() {
 
   const fetchInitialData = async () => {
     try {
+      // 1. Kiểm tra thông tin tài khoản và quyền hiện tại
+      const meRes = await api.get('/auth/me/');
+      const userData = meRes.data?.data;
+      if (userData) {
+        setEmployeeInfo(userData.employee);
+        if (userData.isActive === false) {
+          alert('Tài khoản của bạn đã bị vô hiệu hóa.');
+          localStorage.clear();
+          navigate('/login');
+          return;
+        }
+
+        let roleChanged = false;
+        let usernameChanged = false;
+
+        const cachedRole = localStorage.getItem('role');
+        const cachedUsername = localStorage.getItem('username');
+
+        if (userData.role !== cachedRole) {
+          setRole(userData.role);
+          localStorage.setItem('role', userData.role);
+          roleChanged = true;
+        }
+        if (userData.username !== cachedUsername) {
+          setUsername(userData.username);
+          localStorage.setItem('username', userData.username);
+          usernameChanged = true;
+        }
+
+        if (roleChanged) {
+          try {
+            const currentRefreshToken = localStorage.getItem('refreshToken');
+            if (currentRefreshToken) {
+              const refreshRes = await api.post('/auth/refresh/', {
+                refreshToken: currentRefreshToken
+              });
+              const refreshData = refreshRes.data?.data;
+              if (refreshData?.accessToken) {
+                localStorage.setItem('accessToken', refreshData.accessToken);
+                if (refreshData.refreshToken) {
+                  localStorage.setItem('refreshToken', refreshData.refreshToken);
+                }
+              }
+            }
+          } catch (refreshErr) {
+            console.error('Lỗi tự động làm mới token sau khi đổi quyền:', refreshErr);
+          }
+
+          // Kiểm tra và chuyển hướng nếu tab hiện tại không còn quyền truy cập
+          const currentTab = localStorage.getItem('activeTab') || 'overview';
+          if (currentTab === 'sys_management' && userData.role !== 'Admin') {
+            setActiveTab('overview');
+            localStorage.setItem('activeTab', 'overview');
+          } else if (currentTab === 'sales_pos' && userData.role === 'Product_manager') {
+            setActiveTab('overview');
+            localStorage.setItem('activeTab', 'overview');
+          }
+        }
+      }
+
+      setAuthChecked(true);
+
+      // 2. Tải dữ liệu ban đầu
       const [catalogsRes, unitsRes, originsRes, medicinesRes, allMedsRes, allInvsRes] = await Promise.all([
         api.get('/catalogs'),
         api.get('/units'),
@@ -2393,6 +2468,38 @@ function Home() {
     navigate('/login');
   };
 
+  const handleChangePassword = async (e) => {
+    e.preventDefault();
+    setChangePasswordError('');
+    setChangePasswordSuccess('');
+
+    if (newPassword !== confirmNewPassword) {
+      setChangePasswordError('Mật khẩu mới và mật khẩu xác nhận không khớp');
+      return;
+    }
+
+    try {
+      await api.post('/auth/change-password/', {
+        username: username,
+        oldPassword: oldPassword,
+        newPassword: newPassword,
+        confirmNewPassword: confirmNewPassword
+      });
+
+      setChangePasswordSuccess('Cập nhật mật khẩu thành công!');
+      setOldPassword('');
+      setNewPassword('');
+      setConfirmNewPassword('');
+      setTimeout(() => {
+        setChangePasswordSuccess('');
+        setShowProfileModal(false);
+      }, 1500);
+    } catch (err) {
+      console.error('Lỗi khi đổi mật khẩu:', err);
+      setChangePasswordError(err.response?.data?.message || 'Không thể đổi mật khẩu. Vui lòng kiểm tra lại.');
+    }
+  };
+
   const handleActivityClick = (op) => {
     if (op.type === 'RECEIPT') {
       setReceiptSearchType('receiptId');
@@ -2939,6 +3046,7 @@ function Home() {
           setExpandedMenus={setExpandedMenus}
           toggleMenu={toggleMenu}
           handleLogout={handleLogout}
+          onShowProfileDetails={() => setShowProfileModal(true)}
         />
 
         {/* VÙNG MAIN CONTENT */}
@@ -3562,6 +3670,154 @@ function Home() {
                   In hóa đơn
                 </button>
               </div>
+            </div>
+          </div>
+        )}
+
+        {showProfileModal && (
+          <div style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(15, 23, 42, 0.7)',
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            zIndex: 1100,
+            backdropFilter: 'blur(4px)'
+          }}>
+            <div style={{
+              background: '#ffffff',
+              width: '480px',
+              padding: '24px',
+              borderRadius: '12px',
+              boxShadow: '0 20px 25px -5px rgba(0,0,0,0.15), 0 10px 10px -5px rgba(0,0,0,0.06)',
+              border: '1px solid #e2e8f0',
+              display: 'flex',
+              flexDirection: 'column',
+              fontFamily: 'Inter, sans-serif',
+              maxHeight: '90vh',
+              overflowY: 'auto'
+            }}>
+              {/* Modal Header */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '1px solid #f1f5f9', paddingBottom: '12px' }}>
+                <h3 style={{ fontSize: '15px', fontWeight: '800', color: '#0f172a', margin: 0, textTransform: 'uppercase' }}>
+                  Thông tin tài khoản & cá nhân
+                </h3>
+                <button
+                  type="button"
+                  style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: '#94a3b8', lineHeight: '1' }}
+                  onClick={() => {
+                    setShowProfileModal(false);
+                    setOldPassword('');
+                    setNewPassword('');
+                    setConfirmNewPassword('');
+                    setChangePasswordError('');
+                    setChangePasswordSuccess('');
+                  }}
+                >
+                  ×
+                </button>
+              </div>
+
+              {/* Personal Info Section */}
+              <div style={{ marginBottom: '20px' }}>
+                <h4 style={{ fontSize: '13px', fontWeight: '700', color: 'var(--primary-color)', margin: '0 0 10px 0', textTransform: 'uppercase' }}>
+                  Thông tin nhân viên
+                </h4>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', fontSize: '13px', background: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px solid #f1f5f9' }}>
+                  <div><strong>Tên đăng nhập:</strong> {username}</div>
+                  <div><strong>Vai trò:</strong> {getRoleDisplayName(role)}</div>
+                  {employeeInfo ? (
+                    <>
+                      <div style={{ gridColumn: 'span 2' }}><strong>Họ và tên:</strong> {employeeInfo.fullName}</div>
+                      <div><strong>Giới tính:</strong> {employeeInfo.gender === 'Male' ? 'Nam' : 'Nữ'}</div>
+                      <div><strong>Năm sinh:</strong> {employeeInfo.yearOfBirth}</div>
+                      <div><strong>Số điện thoại:</strong> {employeeInfo.phoneNumber || '---'}</div>
+                      <div style={{ gridColumn: 'span 2' }}><strong>Email:</strong> {employeeInfo.email || '---'}</div>
+                      <div style={{ gridColumn: 'span 2' }}><strong>Ngày vào làm:</strong> {employeeInfo.hireDate || '---'}</div>
+                    </>
+                  ) : (
+                    <div style={{ gridColumn: 'span 2', color: '#94a3b8', fontStyle: 'italic' }}>Không có thông tin chi tiết nhân viên</div>
+                  )}
+                </div>
+              </div>
+
+              {/* Change Password Section */}
+              <div>
+                <h4 style={{ fontSize: '13px', fontWeight: '700', color: 'var(--primary-color)', margin: '0 0 10px 0', textTransform: 'uppercase' }}>
+                  Đổi mật khẩu
+                </h4>
+                {changePasswordError && <div className="alert alert-danger" style={{ fontSize: '13px', padding: '8px 12px', marginBottom: '10px' }}>{changePasswordError}</div>}
+                {changePasswordSuccess && <div className="alert alert-success" style={{ fontSize: '13px', padding: '8px 12px', marginBottom: '10px' }}>{changePasswordSuccess}</div>}
+
+                <form onSubmit={handleChangePassword}>
+                  <div className="form-group" style={{ marginBottom: '10px' }}>
+                    <label className="label" style={{ fontWeight: '600', color: '#334155', fontSize: '12px', display: 'block', marginBottom: '4px' }}>Mật khẩu hiện tại *</label>
+                    <input
+                      type="password"
+                      className="input"
+                      style={{ padding: '8px 12px', fontSize: '13px' }}
+                      placeholder="Nhập mật khẩu hiện tại..."
+                      value={oldPassword}
+                      onChange={(e) => setOldPassword(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div className="form-group" style={{ marginBottom: '10px' }}>
+                    <label className="label" style={{ fontWeight: '600', color: '#334155', fontSize: '12px', display: 'block', marginBottom: '4px' }}>Mật khẩu mới *</label>
+                    <input
+                      type="password"
+                      className="input"
+                      style={{ padding: '8px 12px', fontSize: '13px' }}
+                      placeholder="Nhập mật khẩu mới..."
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div className="form-group" style={{ marginBottom: '16px' }}>
+                    <label className="label" style={{ fontWeight: '600', color: '#334155', fontSize: '12px', display: 'block', marginBottom: '4px' }}>Xác nhận mật khẩu mới *</label>
+                    <input
+                      type="password"
+                      className="input"
+                      style={{ padding: '8px 12px', fontSize: '13px' }}
+                      placeholder="Nhập lại mật khẩu mới..."
+                      value={confirmNewPassword}
+                      onChange={(e) => setConfirmNewPassword(e.target.value)}
+                      required
+                    />
+                  </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                    <button
+                      type="button"
+                      className="btn-action btn-cancel"
+                      style={{ padding: '8px 16px', fontSize: '13px', border: '1px solid #cbd5e1', backgroundColor: '#f8fafc', color: '#475569', borderRadius: '6px', cursor: 'pointer' }}
+                      onClick={() => {
+                        setShowProfileModal(false);
+                        setOldPassword('');
+                        setNewPassword('');
+                        setConfirmNewPassword('');
+                        setChangePasswordError('');
+                        setChangePasswordSuccess('');
+                      }}
+                    >
+                      Hủy
+                    </button>
+                    <button
+                      type="submit"
+                      className="btn-action"
+                      style={{ padding: '8px 16px', fontSize: '13px', backgroundColor: 'var(--primary-color)', color: '#ffffff', borderRadius: '6px', border: 'none', cursor: 'pointer' }}
+                    >
+                      Cập nhật
+                    </button>
+                  </div>
+                </form>
+              </div>
+
             </div>
           </div>
         )}

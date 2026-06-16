@@ -3,7 +3,7 @@ import React from 'react';
 const Sidebar = ({
   username, role, getRoleClass, getRoleDisplayName,
   activeTab, setActiveTab, expandedMenus, setExpandedMenus,
-  toggleMenu, handleLogout
+  toggleMenu, handleLogout, onShowProfileDetails
 }) => {
   return (
       <aside className="sidebar">
@@ -17,8 +17,22 @@ const Sidebar = ({
           </div>
           <div className="user-info">
             <div className="user-name" title={username}>{username}</div>
-            <div className={`user-role-badge ${getRoleClass(role)}`}>
-              {getRoleDisplayName(role)}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
+              <span className={`user-role-badge ${getRoleClass(role)}`} style={{ margin: 0 }}>
+                {getRoleDisplayName(role)}
+              </span>
+              <span 
+                onClick={onShowProfileDetails}
+                style={{
+                  fontSize: '11px',
+                  color: 'var(--primary-color)',
+                  cursor: 'pointer',
+                  textDecoration: 'underline',
+                  fontWeight: '600'
+                }}
+              >
+                Chi tiết
+              </span>
             </div>
           </div>
         </div>
