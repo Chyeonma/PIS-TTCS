@@ -30,7 +30,7 @@ services:
     container_name: pis-backend
     restart: unless-stopped
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     environment:
       SERVER_PORT: 8080
       MySQL_JDBC_URL: jdbc:mysql://mysql:3306/pis
@@ -52,7 +52,7 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        VITE_API_BASE_URL: http://localhost:8080/api
+        VITE_API_BASE_URL: /api
     container_name: pis-frontend
     restart: unless-stopped
     ports:

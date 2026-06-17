@@ -44,9 +44,51 @@ docker compose up --build -d
 
 | Dịch vụ      | URL                                |
 | ------------ | ---------------------------------- |
-| Frontend     | http://localhost                    |
-| Backend API  | http://localhost:8080/api           |
+| Frontend     | http://localhost hoặc http://IP_MAY_SERVER |
+| Backend API  | /api qua frontend Nginx proxy       |
 | MySQL        | `localhost:3306` (user: `root`, password: `123456`) |
+
+### Truy cập từ máy khác trong cùng LAN
+
+1. Lấy IP LAN của máy chạy Docker:
+
+```bash
+hostname -I
+```
+
+Ví dụ IP là `192.168.1.10`, các máy khác trong cùng mạng truy cập:
+
+```text
+http://192.168.1.10
+```
+
+Frontend sẽ tự gọi API về cùng server qua đường dẫn `/api`, ví dụ:
+
+```text
+http://192.168.1.10/api/auth/login/
+```
+
+Không dùng `http://localhost:8080/api` cho frontend khi truy cập từ máy khác, vì `localhost` lúc đó là máy của người dùng, không phải máy server.
+
+Nếu máy server bật firewall, mở port 80:
+
+```bash
+sudo ufw allow 80/tcp
+```
+
+Nếu chạy frontend bằng Vite dev server thay vì Docker/Nginx:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Máy khác trong LAN truy cập `http://IP_MAY_SERVER:5173`. Vite đã được cấu hình để proxy `/api` về backend trên máy server. Nếu backend không chạy ở `localhost:8080`, đặt biến:
+
+```bash
+VITE_API_PROXY_TARGET=http://IP_OR_HOST_BACKEND:8080 npm run dev
+```
 
 ### 5. Tài khoản dùng thử (Demo accounts)
 
@@ -78,7 +120,6 @@ docker compose up --build -d
 
 | Biến                 | Mô tả              | Giá trị mặc định                |
 | -------------------- | ------------------- | -------------------------------- |
-| `VITE_API_BASE_URL`  | URL gọi API backend | `http://localhost:8080/api`      |
+| `VITE_API_BASE_URL`  | URL gọi API backend | `/api`      |
 
 > **Lưu ý:** Biến frontend là **build-time ARG**, phải truyền lúc build image. Thay đổi giá trị cần build lại frontend.
-
